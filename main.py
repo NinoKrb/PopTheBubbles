@@ -1,9 +1,5 @@
-import pygame
-import pygame.mixer
-import os
-import random
-import glob
-import time
+import pygame, pygame.mixer
+import os, random, glob, time, json
 
 class Settings():
     window_height = 645
@@ -13,6 +9,7 @@ class Settings():
     path_image = os.path.join(base_file, "assets/images/")
     path_font = os.path.join(base_file, "assets/fonts/")
     path_sounds = os.path.join(base_file, "assets/sounds/")
+    score_file = os.path.join(base_file, "score.json")
     title = "PopTheBubbles - The Game"
     fps = 60
 
@@ -44,19 +41,26 @@ class Settings():
     text_your_score = "Your Score: {}"
     text_your_play_time = "Your Playtime: {}"
     text_points = "{} Points"
-    text_play_time = "{}"
+    text_play_time = "{}s"
+    text_scoreboard = "Scoreboard"
+    text_scoreboard_item = "Playtime: {}, Score: {}, Popped Bubbles: {}"
 
     # Bubble Settings
     bubble_size = (5,5)
     bubble_grow_speed = (1,4)
     bubble_grow_delay = 12.5
-    bubble_spawn_delay = 50
+    max_grow_speed = 10
+    bubble_spawn_delay = 60
+    min_bubble_spawn_delay = 40
     bubble_border_distance = 10
     bubble_border_x = 118
     bubble_border_y = 150
     bubble_max_count = (window_height + window_width) / 100
     bubble_path = "bubbles/*.png"
     bubble_animation_frames = glob.glob(os.path.join(path_image, bubble_path))
+
+    bubble_collide_ratio = 4 
+    # I have deliberately set the collide ratio higher here, because otherwise it could lead to almost impossible situations in the course of the game.
 
     # Images - Overlay Sprites
     logo_image = "PopTheBubbleLogo.png"
@@ -88,6 +92,12 @@ class Bubble(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.grow_speed = random.randint(Settings.bubble_grow_speed[0], Settings.bubble_grow_speed[1])
 
+        self.grow_speed = game.playtime // 2 * self.grow_speed * 0.1
+        if self.grow_speed >= Settings.max_grow_speed:
+            self.grow_speed = Settings.max_grow_speed
+        elif self.grow_speed < 0.5:
+            self.grow_speed = 0.5
+
         self.find_position()
         self.check_spawn_position()
         self.play_sound(Settings.spawn_sound, 1)
@@ -101,13 +111,23 @@ class Bubble(pygame.sprite.Sprite):
         sound = pygame.mixer.Sound(os.path.join(Settings.path_sounds, file))
         pygame.mixer.Channel(channel).play(sound)
 
+    # Find spawn position
     def find_position(self):
         self.rect.top = random.randrange(Settings.bubble_border_y + Settings.bubble_border_distance, Settings.window_height - Settings.bubble_border_y - self.rect.height - Settings.bubble_border_distance)
         self.rect.left = random.randrange(Settings.bubble_border_x + Settings.bubble_border_distance, Settings.window_width - Settings.bubble_border_x - self.rect.width - Settings.bubble_border_distance)
     
+    # Check if spawn position is valid
     def check_spawn_position(self):
-        game.new_bubbles.remove(self)
-        game.bubbles.add(self)
+        for i in range(10):
+            hits = pygame.sprite.spritecollide(self, game.bubbles, False, pygame.sprite.collide_circle_ratio(Settings.bubble_collide_ratio))
+            print(hits)
+            if len(hits) > 0:
+                self.find_position()
+                continue
+            else:
+                game.new_bubbles.remove(self)
+                game.bubbles.add(self)
+                break
 
     def update(self):
         self.grow_delay += 1
@@ -124,6 +144,7 @@ class Bubble(pygame.sprite.Sprite):
         self.image = pygame.image.load(os.path.join(Settings.path_image, filename)).convert_alpha()
         self.image = self.original_image = pygame.transform.scale(self.image, (Settings.bubble_size[0], Settings.bubble_size[1]))
 
+    # Scaling
     def scale_up(self):
         if self.rect.width < Settings.window_width:
             self.scale['width'] += self.grow_speed
@@ -132,6 +153,7 @@ class Bubble(pygame.sprite.Sprite):
     def get_scale(self):
         return (self.scale['width'], self.scale['height'])
 
+    # Centering the Sprite
     def set_center(self):
         c = self.rect.center
         self.image = pygame.transform.scale(self.original_image, (self.get_scale()))
@@ -141,15 +163,18 @@ class Bubble(pygame.sprite.Sprite):
     def draw(self, screen):
         screen.blit(self.image, self.rect)
 
+    # Check for cursor interactions
     def check_interaction(self, event):
         if self.rect.collidepoint(event.pos):
             self.death = True
+            game.popped_bubbles += 1
 
     def check_collision(self):
         if self.rect.top <= Settings.bubble_border_y or self.rect.left <= Settings.bubble_border_x or self.rect.right >= Settings.window_width - Settings.bubble_border_x or self.rect.bottom >= Settings.window_height - Settings.bubble_border_y:
             game.game_over = True
             game.end_timer()
             self.play_sound(Settings.crash_sound, 3)
+            game.save_score()
 
         collisions = pygame.sprite.spritecollide(self, game.bubbles, False, pygame.sprite.collide_mask)
         for sprite in collisions:
@@ -157,7 +182,9 @@ class Bubble(pygame.sprite.Sprite):
                 game.game_over = True
                 game.end_timer()
                 self.play_sound(Settings.crash_sound, 3)
+                game.save_score()
 
+    # Check if Bubble is hitten, then play animation frame
     def check_plop_animation(self):
         if self.death == True:
             if self.death_animation_count >= len(Settings.bubble_animation_frames):
@@ -170,24 +197,26 @@ class Bubble(pygame.sprite.Sprite):
             self.set_center()
             self.death_animation_count += 1
 
-
 class Cursor(pygame.sprite.Sprite):
     def __init__(self, filename):
         super().__init__()
         self.update_cursor(filename)
         self.rect = self.image.get_rect()
 
+    # Set the custom cursor to the real cursor position
     def update(self):
         pygame.mouse.set_visible(False)
         pos = pygame.mouse.get_pos()
         self.rect.left = pos[0]
         self.rect.top = pos[1]
 
+        # Check if cursor is in playground or outside => Change cursors appearance
         if self.rect.top <= Settings.bubble_border_y or self.rect.left <= Settings.bubble_border_x or self.rect.right >= Settings.window_width - Settings.bubble_border_x or self.rect.bottom >= Settings.window_height - Settings.bubble_border_y:
             self.update_cursor(Settings.cursor_image_hand)
         else:
             self.update_cursor(Settings.cursor_image_click)
     
+    # Helper function to change the cursors image
     def update_cursor(self, filename):
         self.image = pygame.image.load(os.path.join(Settings.path_image, filename)).convert_alpha()
         self.image = pygame.transform.scale(self.image, Settings.cursor_size)
@@ -213,11 +242,12 @@ class Game():
 
         self.cursor = Cursor(Settings.cursor_image_hand)
 
-        # Set default game values
+        # Set default game/menu values
         self.running = True
         self.pause_menu = False
         self.game_over = False
         self.game_started = True
+        self.scoreboard = False
 
         # Set fonts for the game overlay
         self.font = pygame.font.Font(os.path.join(Settings.path_font, Settings.font_type), Settings.font_overlay_size)
@@ -250,9 +280,17 @@ class Game():
 
     def spawn_bubbles(self):
         self.bubble_counter += 1
+
+        # Calculate spawnrate of bubbles
+        new_bubble_spawn_delay = Settings.bubble_spawn_delay - self.playtime // 10
+        if new_bubble_spawn_delay >= Settings.min_bubble_spawn_delay:
+            self.bubble_spawn_delay = new_bubble_spawn_delay
+        else:
+            self.bubble_spawn_delay = Settings.min_bubble_spawn_delay
+
         if self.bubble_counter >= self.bubble_spawn_delay:
             self.bubble_counter = 0
-
+            # Check if too many bubbles are already in => Spawn new bubble
             if len(self.bubbles) < Settings.bubble_max_count:
                 self.new_bubbles.add(Bubble(Settings.bubble_image))
 
@@ -265,7 +303,9 @@ class Game():
             self.screen.blit(pause_gray_overlay, (0,0))
 
             # Set/Render Overlay title
-            if self.game_over:
+            if self.scoreboard:
+                header_text = Settings.text_scoreboard
+            elif self.game_over:
                 header_text = Settings.text_game_over
             elif self.pause_menu:
                 header_text = Settings.text_pause
@@ -280,37 +320,46 @@ class Game():
             logo = pygame.transform.scale(logo, (604, 118))
             self.screen.blit(logo, ((Settings.window_width // 2 - logo.get_rect().centerx), 75))
 
-            # Gameover Stats
-            if self.game_over or self.pause_menu:
-                # Score
-                score_text = self.font.render(Settings.text_your_score.format(self.stats_points), True, Settings.font_color_white)
-                self.screen.blit(score_text, ((Settings.window_width // 2 - score_text.get_rect().centerx), 75 + logo.get_rect().bottom))
+            # Render scoreboard
+            if self.scoreboard:
+                item_count = 0
+                for item in self.load_scoreboard():
+                    item_count += 1
+                    scoreboard_item = self.font.render(Settings.text_scoreboard_item.format(item['playtime'], item['score'], item['popped_bubbles']), True, Settings.font_color_white)
+                    self.screen.blit(scoreboard_item, ((Settings.window_width // 2 - scoreboard_item.get_rect().centerx), ((item_count + 1) * (scoreboard_item.get_rect().height + 10)) + logo.get_rect().bottom))
 
-                # Playtime
-                play_time_text = self.font.render(Settings.text_your_play_time.format(round(self.stat_time, 0)), True, Settings.font_color_white)
-                self.screen.blit(play_time_text, ((Settings.window_width // 2 - play_time_text.get_rect().centerx), 110 + logo.get_rect().bottom))
+            else:
+                # Gameover Stats
+                if self.game_over or self.pause_menu:
+                    # Score
+                    score_text = self.font.render(Settings.text_your_score.format(self.stats_points), True, Settings.font_color_white)
+                    self.screen.blit(score_text, ((Settings.window_width // 2 - score_text.get_rect().centerx), 75 + logo.get_rect().bottom))
 
-            # Loading "click to start" text
-            click_to_start = pygame.image.load(os.path.join(Settings.path_image, Settings.click_to_start_image)).convert_alpha()
-            click_to_start = pygame.transform.scale(click_to_start, (351, 85))
+                    # Playtime
+                    play_time_text = self.font.render(Settings.text_play_time.format(self.playtime), True, Settings.font_color_white)
+                    self.screen.blit(play_time_text, ((Settings.window_width // 2 - play_time_text.get_rect().centerx), 110 + logo.get_rect().bottom))
+
+                # Loading "click to start" text
+                click_to_start = pygame.image.load(os.path.join(Settings.path_image, Settings.click_to_start_image)).convert_alpha()
+                click_to_start = pygame.transform.scale(click_to_start, (351, 85))
+
+                # Fade Animation for the "click to start" text
+                if self.alpha_counter >= 100:
+                    self.alpha_direction = 0
+                elif self.alpha_counter <= 1:
+                    self.alpha_direction = 1
+
+                if self.alpha_direction == 1:
+                    self.alpha_counter += Settings.click_to_start_alpha_speed
+                else:
+                    self.alpha_counter -= Settings.click_to_start_alpha_speed
+
+                click_to_start.set_alpha(self.alpha_counter)
+                self.screen.blit(click_to_start, (Settings.window_width // 2 - click_to_start.get_rect().centerx, Settings.window_height // 2))
 
             # Render Keybinds info
             keybinds_text = self.info_font.render(Settings.text_keybinds, True, Settings.font_color_overlay)
             self.screen.blit(keybinds_text, (Settings.window_width // 2 - keybinds_text.get_rect().centerx, Settings.keybinds_label_margin))
-
-            # Fade Animation for the "click to start" text
-            if self.alpha_counter >= 100:
-                self.alpha_direction = 0
-            elif self.alpha_counter <= 1:
-                self.alpha_direction = 1
-
-            if self.alpha_direction == 1:
-                self.alpha_counter += Settings.click_to_start_alpha_speed
-            else:
-                self.alpha_counter -= Settings.click_to_start_alpha_speed
-
-            click_to_start.set_alpha(self.alpha_counter)
-            self.screen.blit(click_to_start, (Settings.window_width // 2 - click_to_start.get_rect().centerx, Settings.window_height // 2))
 
 
         else:
@@ -319,7 +368,8 @@ class Game():
             points = self.font.render(Settings.text_points.format(self.stats_points), True, Settings.font_color_overlay)
             self.screen.blit(points, Settings.points_label_margin)
 
-            play_time = self.font.render(Settings.text_play_time.format(round(time.time() - (self.time - self.time_difference), 0)), True, Settings.font_color_overlay)
+            # Render Playtime
+            play_time = self.font.render(Settings.text_play_time.format(self.playtime), True, Settings.font_color_overlay)
             play_time_rect = play_time.get_rect()
             play_time_rect.right = Settings.window_width - Settings.points_label_margin[0]
             play_time_rect.top = Settings.points_label_margin[1]
@@ -328,28 +378,25 @@ class Game():
     def update(self):
         self.bubbles.update()
 
+        # Check for bubble death => Play animation frame
         for bubble in self.bubbles:
             bubble.check_plop_animation()
 
+        # Calculate the current playtime
+        self.playtime = int(round(time.time() - self.time - self.time_difference, 0))
+
+    # Playtimer mechanic
     def start_timer(self):
         self.time = time.time()
-        self.stat_time = self.time
 
     def pause_timer(self):
-        self.time_difference += time.time() - self.time
-        self.stat_time = time.time() - self.time
-        print("time difference: " + str(self.time_difference))
-        print("time difference calc: " + str(time.time() - self.time))
+        self.pause_time = time.time()
+
+    def play_timer(self):
+        self.time_difference += time.time() - self.pause_time
 
     def end_timer(self):
         self.time_total = time.time() - self.time - self.time_difference 
-
-        #[x] Pause Menü bild "eingrauen"
-        #[ ] Spawn Collide
-        #[ ] Spawnrate zeit abhängig machen
-        #[ ] Wachstumsgeschwindigkeit ändert sich mit dem Spiel
-        #[ ] Spielstände saven
-        #[x] Pausen Menü neue Text anzeige
 
     # Reset the player stats
     def reset_stats(self):
@@ -360,6 +407,9 @@ class Game():
         self.time = 0
         self.time_difference = 0
         self.time_total = 0
+        self.playtime = 0
+        self.popped_bubbles = 0
+        self.pause_time = 0
         self.bubble_spawn_delay = Settings.bubble_spawn_delay
 
     def reset_game(self):
@@ -369,6 +419,25 @@ class Game():
         self.game_over = False
         self.start_timer()
 
+    # Load all stats from score file
+    def load_scoreboard(self):
+        file = open(Settings.score_file)
+        return json.load(file)['scores']
+
+    # Save players latest play score
+    def save_score(self):
+        file = open(Settings.score_file)
+        data = json.load(file)
+        
+        data['scores'].append({
+            "playtime": self.playtime,
+            "score": self.stats_points,
+            "popped_bubbles": self.popped_bubbles
+        })
+
+        with open(Settings.score_file, 'w') as outfile:
+            json.dump(data, outfile)
+
     # Check all essential press events
     def watch_for_events(self):
         for event in pygame.event.get():
@@ -377,32 +446,44 @@ class Game():
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
+                    # Check cursor collision
                     for bubble in self.bubbles:
                         bubble.check_interaction(event)
 
+                    # Check for menus
                     if self.game_over == True:
                         self.reset_game()
 
                     elif self.pause_menu == True:
                         self.pause_menu = False
-                        self.start_timer()
+                        self.play_timer()
 
                     elif self.game_started == True:
                         self.game_started = False
                         self.start_timer()
 
                 elif event.button == 3:
+                    # Check for pause menu
                     if self.pause_menu == False and self.game_started == False and self.game_over == False:
                         self.pause_menu = True
                         self.pause_timer()
 
             if event.type == pygame.KEYDOWN:
+                # Toggle pause menu
                 if event.key == pygame.K_p:
                     if self.game_started == False and self.game_over == False:
                         self.pause_menu = not self.pause_menu
                         if self.pause_menu == True:
                             self.pause_timer()
+                        else:
+                            self.play_timer()
 
+                # Toggle scoreboard
+                if event.key == pygame.K_TAB:
+                    if self.game_started == True or self.game_over == True or self.pause_menu == True:
+                        self.scoreboard = not self.scoreboard
+
+                # Close game
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
 

@@ -120,7 +120,6 @@ class Bubble(pygame.sprite.Sprite):
     def check_spawn_position(self):
         for i in range(10):
             hits = pygame.sprite.spritecollide(self, game.bubbles, False, pygame.sprite.collide_circle_ratio(Settings.bubble_collide_ratio))
-            print(hits)
             if len(hits) > 0:
                 self.find_position()
                 continue
@@ -212,9 +211,11 @@ class Cursor(pygame.sprite.Sprite):
 
         # Check if cursor is in playground or outside => Change cursors appearance
         if self.rect.top <= Settings.bubble_border_y or self.rect.left <= Settings.bubble_border_x or self.rect.right >= Settings.window_width - Settings.bubble_border_x or self.rect.bottom >= Settings.window_height - Settings.bubble_border_y:
-            self.update_cursor(Settings.cursor_image_hand)
-        else:
             self.update_cursor(Settings.cursor_image_click)
+        elif len(pygame.sprite.spritecollide(self, game.bubbles, False, pygame.sprite.collide_mask)):
+            self.update_cursor(Settings.cursor_image_click)
+        else:
+            self.update_cursor(Settings.cursor_image_hand)
     
     # Helper function to change the cursors image
     def update_cursor(self, filename):

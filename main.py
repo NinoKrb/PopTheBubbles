@@ -43,7 +43,7 @@ class Settings():
     text_points = "{} Points"
     text_play_time = "{}s"
     text_scoreboard = "Scoreboard"
-    text_scoreboard_item = "Playtime: {}, Score: {}, Popped Bubbles: {}"
+    text_scoreboard_item = "Playtime: {}s, Score: {}, Popped Bubbles: {}"
 
     # Bubble Settings
     bubble_size = (5,5)
@@ -324,7 +324,7 @@ class Game():
             # Render scoreboard
             if self.scoreboard:
                 item_count = 0
-                for item in self.load_scoreboard():
+                for item in self.load_scoreboard()[0:5]:
                     item_count += 1
                     scoreboard_item = self.font.render(Settings.text_scoreboard_item.format(item['playtime'], item['score'], item['popped_bubbles']), True, Settings.font_color_white)
                     self.screen.blit(scoreboard_item, ((Settings.window_width // 2 - scoreboard_item.get_rect().centerx), ((item_count + 1) * (scoreboard_item.get_rect().height + 10)) + logo.get_rect().bottom))
@@ -340,23 +340,24 @@ class Game():
                     play_time_text = self.font.render(Settings.text_play_time.format(self.playtime), True, Settings.font_color_white)
                     self.screen.blit(play_time_text, ((Settings.window_width // 2 - play_time_text.get_rect().centerx), 110 + logo.get_rect().bottom))
 
-                # Loading "click to start" text
-                click_to_start = pygame.image.load(os.path.join(Settings.path_image, Settings.click_to_start_image)).convert_alpha()
-                click_to_start = pygame.transform.scale(click_to_start, (351, 85))
+                if self.game_started or self.game_over:
+                    # Loading "click to start" text
+                    click_to_start = pygame.image.load(os.path.join(Settings.path_image, Settings.click_to_start_image)).convert_alpha()
+                    click_to_start = pygame.transform.scale(click_to_start, (351, 85))
 
-                # Fade Animation for the "click to start" text
-                if self.alpha_counter >= 100:
-                    self.alpha_direction = 0
-                elif self.alpha_counter <= 1:
-                    self.alpha_direction = 1
+                    # Fade Animation for the "click to start" text
+                    if self.alpha_counter >= 100:
+                        self.alpha_direction = 0
+                    elif self.alpha_counter <= 1:
+                        self.alpha_direction = 1
 
-                if self.alpha_direction == 1:
-                    self.alpha_counter += Settings.click_to_start_alpha_speed
-                else:
-                    self.alpha_counter -= Settings.click_to_start_alpha_speed
+                    if self.alpha_direction == 1:
+                        self.alpha_counter += Settings.click_to_start_alpha_speed
+                    else:
+                        self.alpha_counter -= Settings.click_to_start_alpha_speed
 
-                click_to_start.set_alpha(self.alpha_counter)
-                self.screen.blit(click_to_start, (Settings.window_width // 2 - click_to_start.get_rect().centerx, Settings.window_height // 2))
+                    click_to_start.set_alpha(self.alpha_counter)
+                    self.screen.blit(click_to_start, (Settings.window_width // 2 - click_to_start.get_rect().centerx, Settings.window_height // 2))
 
             # Render Keybinds info
             keybinds_text = self.info_font.render(Settings.text_keybinds, True, Settings.font_color_overlay)

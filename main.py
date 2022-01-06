@@ -108,8 +108,12 @@ class Bubble(pygame.sprite.Sprite):
         self.scale = {'width': self.rect.width, 'height': self.rect.height}
 
     def play_sound(self, file, channel):
-        sound = pygame.mixer.Sound(os.path.join(Settings.path_sounds, file))
-        pygame.mixer.Channel(channel).play(sound)
+        self.sound = pygame.mixer.Sound(os.path.join(Settings.path_sounds, file))
+        pygame.mixer.Channel(channel).play(self.sound)
+
+    def stop_sound(self):
+        if self.sound != None:
+            pygame.mixer.Sound.stop(self.sound)
 
     # Find spawn position
     def find_position(self):
@@ -440,6 +444,10 @@ class Game():
         with open(Settings.score_file, 'w') as outfile:
             json.dump(data, outfile)
 
+    def stop_sounds(self):
+        for bubble in self.bubbles:
+            bubble.stop_sound()
+
     # Check all essential press events
     def watch_for_events(self):
         for event in pygame.event.get():
@@ -469,6 +477,7 @@ class Game():
                     if self.pause_menu == False and self.game_started == False and self.game_over == False:
                         self.pause_menu = True
                         self.pause_timer()
+                        self.stop_sounds()
 
             if event.type == pygame.KEYDOWN:
                 # Toggle pause menu
@@ -479,6 +488,7 @@ class Game():
                             self.pause_timer()
                         else:
                             self.play_timer()
+                            self.stop_sounds()
 
                 # Toggle scoreboard
                 if event.key == pygame.K_TAB:

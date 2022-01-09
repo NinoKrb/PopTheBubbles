@@ -45,7 +45,9 @@ class Settings():
     text_game_over = "Game Over"
     text_pause = "Game Paused"
     text_welcome_to = "Welcome to"
+    text_quit = "Quit Game"
     text_keybinds = "[m] Mute/Unmute Music | [+] Volume up | [-] Volume down"
+    text_keybinds_quit = "[Left Mouse Click] Restart Game | [ESC] Quit Game | [Right Mouse Click] Continue Playing"
     text_your_score = "Your Score: {}"
     text_your_play_time = "Your Playtime: {}"
     text_points = "{} Points"
@@ -280,6 +282,7 @@ class Game():
         self.game_over = False
         self.game_started = True
         self.scoreboard = False
+        self.quit_menu = False
 
         # Set fonts for the game overlay
         self.font = pygame.font.Font(os.path.join(
@@ -296,7 +299,7 @@ class Game():
     def run(self):
         while self.running:
             self.fps.tick(Settings.fps)
-            if self.game_over == False and self.pause_menu == False and self.game_started == False:
+            if self.game_over == False and self.pause_menu == False and self.game_started == False and self.quit_menu == False:
                 self.update()
                 self.spawn_bubbles()
 
@@ -330,7 +333,7 @@ class Game():
                 self.new_bubbles.add(Bubble(Settings.bubble_image))
 
     def update_overlay(self):
-        if self.game_over or self.pause_menu or self.game_started:
+        if self.game_over or self.pause_menu or self.game_started or self.quit_menu:
             # Gray Overlay
             pause_gray_overlay = pygame.Surface(
                 (Settings.window_width, Settings.window_height))
@@ -347,6 +350,8 @@ class Game():
                 header_text = Settings.text_pause
             elif self.game_started:
                 header_text = Settings.text_welcome_to
+            elif self.quit_menu:
+                header_text = Settings.text_quit
 
             header_text = self.overlay_font.render(
                 header_text, True, Settings.font_color_blue)
@@ -379,7 +384,7 @@ class Game():
 
             else:
                 # Gameover Stats
-                if self.game_over or self.pause_menu:
+                if self.game_over or self.pause_menu or self.quit_menu:
                     # Score
                     score_text = self.font.render(Settings.text_your_score.format(
                         self.stats_points), True, Settings.font_color_white)
@@ -415,10 +420,14 @@ class Game():
                                      click_to_start.get_rect().centerx, Settings.window_height // 2))
 
             # Render Keybinds info
-            keybinds_text = self.info_font.render(
-                Settings.text_keybinds, True, Settings.font_color_overlay)
+            if self.quit_menu:
+                keybinds_text = self.info_font.render(
+                    Settings.text_keybinds_quit, True, Settings.font_color_overlay)
+            else:
+                keybinds_text = self.info_font.render(
+                    Settings.text_keybinds, True, Settings.font_color_overlay)
             self.screen.blit(keybinds_text, (Settings.window_width // 2 -
-                             keybinds_text.get_rect().centerx, Settings.keybinds_label_margin))
+                            keybinds_text.get_rect().centerx, Settings.keybinds_label_margin))
 
         else:
             # Hud/Stats Rendering
@@ -529,17 +538,24 @@ class Game():
                         self.game_started = False
                         self.start_timer()
 
+                    elif self.quit_menu == True:
+                        self.quit_menu = False
+                        self.reset_game()
+
                 elif event.button == 3:
                     # Check for pause menu
-                    if self.pause_menu == False and self.game_started == False and self.game_over == False:
+                    if self.pause_menu == False and self.game_started == False and self.game_over == False and self.quit_menu == False:
                         self.pause_menu = True
                         self.pause_timer()
                         self.stop_sounds()
+                    elif self.quit_menu == True:
+                        self.quit_menu = False
+                        self.play_timer()
 
             if event.type == pygame.KEYDOWN:
                 # Toggle pause menu
                 if event.key == pygame.K_p:
-                    if self.game_started == False and self.game_over == False:
+                    if self.game_started == False and self.game_over == False and self.quit_menu == False:
                         self.pause_menu = not self.pause_menu
                         if self.pause_menu == True:
                             self.pause_timer()
@@ -554,7 +570,12 @@ class Game():
 
                 # Close game
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    if self.game_started == False:
+                        if self.quit_menu == False:
+                            self.quit_menu = True
+                            self.pause_timer()
+                        else:
+                            self.running = False
 
 
 if __name__ == '__main__':

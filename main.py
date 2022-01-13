@@ -175,7 +175,7 @@ class Bubble(pygame.sprite.Sprite):
             self.scale['height'] += self.grow_speed
 
     def get_scale(self):
-        return (self.scale['width'], self.scale['height'])
+        return (int(self.scale['width']), int(self.scale['height']))
 
     # Centering the Sprite
     def set_center(self):
